@@ -1,7 +1,7 @@
 # Harbour – k3s Homelab Cluster ⚓
 
-Harbour er mit lille **k3s-homelab cluster**, bygget på Lenovo M700-maskiner.
-Tanken er et simpelt, stabilt setup, der er let at automatisere med **Ansible**, og som kan udvides løbende med services som Ingress, cert-manager, storage m.m.
+Harbour er mit lille **k3s-homelab cluster**, bygget på Lenovo M700-maskiner.  
+Tanken er et simpelt, stabilt setup, der er let at automatisere med **Ansible**, og som kan udvides med services som MetalLB, Pi-hole/Unbound, Tailscale, storage m.m.
 
 Clusteret er navngivet efter et havne-tema, hvor én node fungerer som fyrtårn (control-plane), og de øvrige som dokker, der håndterer lasten.
 
@@ -24,31 +24,31 @@ Clusteret er navngivet efter et havne-tema, hvor én node fungerer som fyrtårn 
 | Worker        | `harbour-dock-1`     | `192.168.164.3` | i3 · 8 GB RAM · 128 GB SSD | S4BV7172 |
 | Worker        | `harbour-dock-2`     | `192.168.164.4` | i3 · 8 GB RAM · 128 GB SSD | S4BA1778 |
 
-`harbour-lighthouse` fungerer som master / control-plane og kører k3s-serveren.
+`harbour-lighthouse` fungerer som master / control-plane og kører k3s-serveren.  
+Worker-noderne håndterer workloads og kritiske services med HA.
 
 ---
 
 ## 📁 Repository-struktur
 
 ```text
-ansible/
-├─ collections/
-│  └─ requirements.yml
+theHarbour_ansible/
 ├─ Inventory/
-│  ├─ group_vars
+│  ├─ group_vars/
 │  │  └─ all.yml
-│  └─ inventory.yml
+│  └─ hosts.yml
+├─ manifests/
+│  └─ metallb.yaml
 ├─ playbooks/
 │  ├─ breakdown.yml
 │  ├─ build.yml
 │  └─ first_run.yml
 └─ roles/
-   └─ common/
-      ├─ defaults/
-      │  └─ main.yml
-      └─ tasks/
-         └─ main.yml
-s
+   ├─ common/
+   │  ├─ defaults/main.yml
+   │  └─ tasks/main.yml
+   └─ metallb/
+      └─ tasks/main.yml
 ```
 
 > Bemærk: `Inventory` har stort **I** (Linux er case-sensitive i WSL).
@@ -103,27 +103,37 @@ Verificér:
 ansible --version
 ```
 
+> Hvis du skal bruge Kubernetes-moduler (`k8s`) til MetalLB, installer pakkerne i pipx venv:
+
+```bash
+pipx inject ansible-core kubernetes openshift
+```
+
 ---
 
 ### 4️⃣ Ansible inventory
 
-**Fil:** `ansible/Inventory/hosts.yml`
+**Fil:** `Inventory/hosts.yml`
 
 ```yaml
 all:
+  vars:
+    ansible_user: pbech
+    ansible_become_method: sudo
   children:
     k3s_master:
       hosts:
         harbour-lighthouse:
           ansible_host: 192.168.164.2
+          ansible_become: true
     k3s_workers:
       hosts:
         harbour-dock-1:
           ansible_host: 192.168.164.3
+          ansible_become: true
         harbour-dock-2:
           ansible_host: 192.168.164.4
-  vars:
-    ansible_user: pbech
+          ansible_become: true
 ```
 
 ---
@@ -131,9 +141,7 @@ all:
 ### 5️⃣ Test Ansible-forbindelse
 
 ```bash
-ansible all \
-  -i "/mnt/c/Users/pibm9/Documents/K3s cluster/ansible/Inventory" \
-  -m ping
+ansible all -i Inventory/hosts.yml -m ping
 ```
 
 Forventet output:
@@ -146,24 +154,27 @@ harbour-lighthouse | SUCCESS => pong
 
 ---
 
-### 6️⃣ Kør build-playbook
+### 6️⃣ Kør bootstrap & build
 
 ```bash
-cd "/mnt/c/Users/pibm9/Documents/K3s cluster/ansible"
-ansible-playbook -i Inventory playbooks/first_run.yml
-# Hvis den beder om sudo-password, kør denne:
-# ansible-playbook -i Inventory playbooks/build.yml --ask-pass -e "ansible_become_password={Password}"
+cd /mnt/c/Users/pibm9/Documents/theHarbour_ansible
 
-# Hvis den ikke kan finde /common, så kør denne:
-# ANSIBLE_ROLES_PATH=./roles ansible-playbook -i Inventory playbooks/first_run.yml --ask-pass -e "ansible_become_password={ Password }"
+# Bootstrap systemet
+ansible-playbook -i Inventory/hosts.yml playbooks/first_run.yml --ask-pass
+
+# Byg cluster + installér k3s, Helm og MetalLB
+ANSIBLE_ROLES_PATH=./roles \
+ansible-playbook -i Inventory/hosts.yml playbooks/build.yml --ask-pass \
+  -e "ansible_become_password={YOUR_PASSWORD}"
 ```
 
 Playbooken forventes at:
 
-* installere basispakker
-* konfigurere systemet (UFW, swap off, logging)
+* installere basispakker, UFW, disable swap
 * installere k3s server på `harbour-lighthouse`
-* installere k3s agents på `harbour-dock-*`
+* installere k3s agents på workers
+* installere Helm
+* deployere MetalLB med floating IP range
 
 ---
 
@@ -171,6 +182,8 @@ Playbooken forventes at:
 
 ```bash
 kubectl get nodes
+kubectl get pods -A
+kubectl get svc -A
 ```
 
 Forventet output:
@@ -181,31 +194,32 @@ harbour-dock-1       Ready   worker
 harbour-dock-2       Ready   worker
 ```
 
+MetalLB vil allokere **ClusterIP / LoadBalancer IPs** fra range defineret i `manifests/metallb.yaml`.
+
 ---
 
-## 🧱 High Availability-strategi
+## 🧱 Services i clusteret
 
-Harbour er designet med **pragmatisk HA** i fokus.
+### Pi-hole + Unbound
 
-* Single control-plane (`harbour-lighthouse`)
-* HA workloads på worker-noder
-* Ingen workloads på control-plane
+* Kører som **Deployment + ClusterIP service**
+* DNS kan tilgås internt på `pihole.default.svc.cluster.local`
+* Pi-hole administreres via `WEBPASSWORD` og `ADMINACCOUNT` (fra Kubernetes Secret)
+* HA sikres via 2 replicas og worker-affinity
 
-**Principper**
+### MetalLB
 
-* `replicas: 2` for kritiske services
-* Pod anti-affinity mellem workers
-* Replikeret storage (Longhorn, RF=2)
-
-> Ægte HA control-plane kræver minimum 3 control-plane noder og er uden for nuværende scope.
+* Konfigurerer floating IP range på tværs af workers
+* Kan eksponere LoadBalancer services til LAN/WAN
+* Floating IP rutes til node med “mest overskud”
 
 ---
 
 ## 🗺️ Roadmap
 
 1. k3s + Ansible bootstrap ✅
-2. MetalLB
-3. Pi-hole + Unbound
+2. MetalLB ✅
+3. Pi-hole + Unbound ✅
 4. Tailscale
 5. Monitoring (Prometheus / Grafana)
 6. Persistent storage (Longhorn)
@@ -215,3 +229,4 @@ Harbour er designet med **pragmatisk HA** i fokus.
 ---
 
 > *Denne README fungerer som levende dokumentation og opdateres løbende.* ⚓
+

@@ -1,0 +1,5 @@
+- name: Apply MetalLB manifests
+  k8s:
+    kubeconfig: "{{ playbook_dir }}/kubeconfigs/harbour-lighthouse-kubeconfig"
+    state: present
+    src: "{{ playbook_dir }}/../manifests/metallb.yaml"

@@ -115,3 +115,11 @@
       register: helm_version_check
       changed_when: false
 
+# -----------------------
+# Install MetalLB
+# -----------------------
+- name: Install MetalLB
+  hosts: localhost
+  become: false
+  roles:
+    - metallb
