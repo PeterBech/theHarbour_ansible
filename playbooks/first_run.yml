@@ -1,0 +1,26 @@
+---
+# Bootstrap playbook for nye noder.
+# Sikrer at Python findes, og anvender common-rollen som klargør system,
+# basispakker, firewall (UFW) og OS-krav til k3s.
+
+- name: First run — bootstrap nodes
+  hosts: all
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: "Bootstrap: ensure python3 and python3-apt are installed"
+      raw: |
+        if ! command -v python3 >/dev/null 2>&1; then
+          apt-get update && apt-get install -y python3 python3-apt
+        fi
+
+    - name: Set ansible python interpreter
+      set_fact:
+        ansible_python_interpreter: /usr/bin/python3
+
+    - name: Gather facts
+      setup:
+
+  roles:
+    - common

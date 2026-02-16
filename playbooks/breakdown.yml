@@ -1,0 +1,58 @@
+---
+# Breakdown / nuke playbook.
+# Fjerner k3s fuldstændigt fra alle noder og rydder alle cluster-data.
+# Bruges når clusteren skal nulstilles og bygges op igen fra bunden.
+
+- name: Breakdown k3s cluster
+  hosts: all
+  become: true
+  vars:
+    confirm_breakdown: false
+
+  pre_tasks:
+    - name: Abort unless breakdown is explicitly confirmed
+      fail:
+        msg: >
+          This playbook is destructive.
+          Run with -e confirm_breakdown=true to continue.
+      when: not confirm_breakdown
+
+  tasks:
+    - name: Stop k3s service if running
+      systemd:
+        name: k3s
+        state: stopped
+      ignore_errors: true
+
+    - name: Stop k3s-agent service if running
+      systemd:
+        name: k3s-agent
+        state: stopped
+      ignore_errors: true
+
+    - name: Run k3s uninstall script (server)
+      shell: /usr/local/bin/k3s-uninstall.sh
+      args:
+        removes: /usr/local/bin/k3s
+      ignore_errors: true
+
+    - name: Run k3s uninstall script (agent)
+      shell: /usr/local/bin/k3s-agent-uninstall.sh
+      ignore_errors: true
+
+    - name: Remove leftover k3s and Kubernetes directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher
+        - /var/lib/rancher
+        - /var/lib/kubelet
+        - /var/lib/cni
+        - /etc/cni
+        - /run/k3s
+        - /run/flannel
+
+    - name: Reload systemd
+      command: systemctl daemon-reexec
+      changed_when: false

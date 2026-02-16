@@ -1,0 +1,13 @@
+ufw_enabled: true
+ufw_ssh_port: 22
+
+local_net_cidr: 192.168.0.0/24
+
+base_packages:
+  - curl
+  - ca-certificates
+  - apt-transport-https
+  - gnupg
+  - software-properties-common
+  - htop
+  - vim

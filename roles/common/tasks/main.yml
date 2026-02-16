@@ -1,0 +1,78 @@
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  register: apt_update
+- debug:
+    msg: "APT cache updated: {{ apt_update.changed }}"
+
+- name: Install base packages
+  apt:
+    name: "{{ base_packages }}"
+    state: present
+    update_cache: no
+  register: base_packages_install
+- debug:
+    msg: "Base packages installed/updated: {{ base_packages_install.changed }}"
+
+# -------------------
+# Firewall
+# -------------------
+- name: Install ufw
+  apt:
+    name: ufw
+    state: present
+  register: ufw_install
+- debug:
+    msg: "UFW installed: {{ ufw_install.changed }}"
+
+# Set default policies
+- name: Set default incoming policy to deny
+  ufw:
+    direction: incoming
+    policy: deny
+
+- name: Set default outgoing policy to allow
+  ufw:
+    direction: outgoing
+    policy: allow
+
+# Allow SSH
+- name: Allow SSH through UFW
+  ufw:
+    rule: allow
+    port: "{{ ufw_ssh_port }}"
+    proto: tcp
+
+# Allow all traffic from local network
+- name: Allow all traffic from local network
+  ufw:
+    rule: allow
+    from_ip: "{{ local_net_cidr }}"
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+  when: ufw_enabled
+  register: ufw_enabled_result
+- debug:
+    msg: "UFW enabled: {{ ufw_enabled_result.changed }}"
+
+# -------------------
+# Optional: prepare for k3s
+# -------------------
+- name: Ensure swap is off (required for k3s)
+  command: swapoff -a
+  register: swap_off
+  changed_when: swap_off.rc == 0
+- debug:
+    msg: "Swap disabled: {{ swap_off.changed }}"
+
+- name: Comment out swap in fstab
+  replace:
+    path: /etc/fstab
+    regexp: '(^.*\sswap\s.*$)'
+    replace: '# \1'
+  register: fstab_swap
+- debug:
+    msg: "Swap commented in fstab: {{ fstab_swap.changed }}"

@@ -1,0 +1,4 @@
+k3s_version: ""  
+k3s_install_flags_master: "--cluster-init"  
+k3s_install_flags_agent: ""  
+helm_version: "v3.16.1"

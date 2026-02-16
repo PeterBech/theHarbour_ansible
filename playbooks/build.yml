@@ -1,0 +1,117 @@
+---
+# Bygger og konfigurerer k3s Kubernetes-clusteret.
+# Installerer k3s master og workers samt Helm på alle noder.
+# Forudsætter at first_run.yml allerede er kørt.
+- name: Build Harbour k3s cluster  
+  hosts: all  
+  become: true  
+  tasks:  
+    - name: Install curl (required for k3s install)  
+      apt:  
+        name: curl  
+        state: present  
+        update_cache: yes  
+
+# -----------------------
+# Master node installation
+# -----------------------
+- name: Install k3s master
+  hosts: k3s_master
+  become: true
+  tasks:
+    - name: Download and run k3s install script
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -s - server {{ k3s_install_flags_master }}
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Wait for kubeconfig to exist
+      wait_for:
+        path: /etc/rancher/k3s/k3s.yaml
+        timeout: 60
+
+    - name: Ensure kubeconfig is readable by user
+      file:
+        path: /etc/rancher/k3s/k3s.yaml
+        mode: '0644'
+
+    - name: Get node token for agents
+      shell: cat /var/lib/rancher/k3s/server/node-token
+      register: k3s_token
+      changed_when: false
+
+    - name: Set fact k3s_token
+      set_fact:
+        k3s_token: "{{ k3s_token.stdout }}"
+    
+    - name: Fetch kubeconfig from master
+      fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ playbook_dir }}/fetched/harbour-lighthouse/k3s.yaml"
+        flat: yes
+
+  
+- name: Handle kubeconfig locally
+  hosts: localhost
+  tasks:
+    - name: Ensure kubeconfig directory exists
+      file:
+        path: "{{ playbook_dir }}/kubeconfigs"
+        state: directory
+        mode: '0755'
+
+    - name: Update kubeconfig with master IP
+      replace:
+        path: "{{ playbook_dir }}/fetched/harbour-lighthouse/k3s.yaml"
+        regexp: '127\.0\.0\.1'
+        replace: '{{ hostvars["harbour-lighthouse"].ansible_host }}'
+
+    - name: Move kubeconfig to final location
+      copy:
+        src: "{{ playbook_dir }}/fetched/harbour-lighthouse/k3s.yaml"
+        dest: "{{ playbook_dir }}/kubeconfigs/harbour-lighthouse-kubeconfig"
+
+
+
+# -----------------------
+# Worker node installation
+# -----------------------
+- name: Install k3s worker
+  hosts: k3s_workers
+  become: true
+  vars:
+    master_ip: "{{ hostvars['harbour-lighthouse'].ansible_host }}"
+    token: "{{ hostvars['harbour-lighthouse'].k3s_token }}"
+  tasks:
+    - name: Download and run k3s agent install
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_URL=https://{{ master_ip }}:6443 K3S_TOKEN={{ token }} sh -s - agent {{ k3s_install_flags_agent }}
+      args:
+        creates: /usr/local/bin/k3s
+
+# -----------------------
+# Install Helm on all nodes
+# -----------------------
+- name: Install Helm
+  hosts: all
+  become: true
+  tasks:
+    - name: Download Helm
+      get_url:
+        url: https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz
+        dest: /tmp/helm.tar.gz
+        mode: '0644'
+
+    - name: Extract Helm
+      unarchive:
+        src: /tmp/helm.tar.gz
+        dest: /usr/local/bin/
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+        creates: /usr/local/bin/helm
+
+    - name: Verify Helm installation
+      command: helm version
+      register: helm_version_check
+      changed_when: false
+
