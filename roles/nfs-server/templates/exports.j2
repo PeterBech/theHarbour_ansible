@@ -1,0 +1,3 @@
+{% for item in nfs_exports %}
+{{ item.path }} {{ item.network }}({{ item.options }})
+{% endfor %}

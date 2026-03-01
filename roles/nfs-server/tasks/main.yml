@@ -13,12 +13,18 @@
     mode: "0777"
   loop: "{{ nfs_exports }}"
 
-- name: Configure /etc/exports
-  lineinfile:
-    path: /etc/exports
-    line: "{{ item.path }} {{ item.network }}({{ item.options }})"
-    create: yes
-  loop: "{{ nfs_exports }}"
+- name: Configure /etc/exports from template
+#  lineinfile:
+#    path: /etc/exports
+#    line: "{{ item.path }} {{ item.network }}({{ item.options }})"
+#    create: yes
+  template:
+    src: exports.j2
+    dest: /etc/exports
+    owner: root
+    group: root
+    mode: "0644"
+#  loop: "{{ nfs_exports }}"
   notify: Restart NFS
 
 - name: Ensure exports are active
@@ -30,3 +36,11 @@
     name: nfs-kernel-server
     state: started
     enabled: true
+
+- name: Ensure Pi-hole NFS directory exists
+  file:
+    path: /srv/k8s-storage/pihole
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: "0777"
