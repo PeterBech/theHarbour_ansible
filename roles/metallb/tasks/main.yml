@@ -1,5 +1,42 @@
-- name: Apply MetalLB manifests
-  k8s:
-    kubeconfig: "{{ playbook_dir }}/kubeconfigs/harbour-lighthouse-kubeconfig"
+- name: Install MetalLB (native manifests)
+  kubernetes.core.k8s:
     state: present
-    src: "{{ playbook_dir }}/../manifests/metallb.yaml"
+    src: https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+
+- name: Wait for MetalLB controller to be ready
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: metallb-system
+  register: metallb_pods
+  retries: 10
+  delay: 5
+  until: >
+    metallb_pods.resources |
+    selectattr('status.phase', 'equalto', 'Running') |
+    list | length > 0
+
+- name: Wait for MetalLB CRDs
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: ipaddresspools.metallb.io
+  register: crd_check
+  retries: 20
+  delay: 5
+  until: crd_check.resources is defined
+  ignore_errors: true
+
+- name: Apply IPAddressPool
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/ipaddresspool.yml"
+  register: result
+  retries: 5
+  delay: 3
+  until: result is succeeded
+
+
+- name: Apply L2Advertisement
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/l2advertisement.yml"

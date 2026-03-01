@@ -1,0 +1,32 @@
+- name: Install NFS packages
+  apt:
+    name: "{{ nfs_packages }}"
+    state: present
+    update_cache: true
+
+- name: Ensure export directories exist
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: "0777"
+  loop: "{{ nfs_exports }}"
+
+- name: Configure /etc/exports
+  lineinfile:
+    path: /etc/exports
+    line: "{{ item.path }} {{ item.network }}({{ item.options }})"
+    create: yes
+  loop: "{{ nfs_exports }}"
+  notify: Restart NFS
+
+- name: Ensure exports are active
+  command: exportfs -ra
+  notify: Restart NFS
+
+- name: Ensure NFS server is running
+  service:
+    name: nfs-kernel-server
+    state: started
+    enabled: true

@@ -1,5 +1,11 @@
 ufw_enabled: true
 ufw_ssh_port: 22
+# NFS
+nfs_ports:
+  - { port: 2049, proto: tcp }
+  - { port: 111, proto: tcp }
+  - { port: 111, proto: udp }
+
 
 local_net_cidr: 192.168.0.0/24
 
@@ -11,3 +17,4 @@ base_packages:
   - software-properties-common
   - htop
   - vim
+

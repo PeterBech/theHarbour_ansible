@@ -3,19 +3,6 @@ kind: Namespace
 metadata:
   name: metallb-system
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  namespace: metallb-system
-  name: config
-data:
-  config: |
-    address-pools:
-    - name: default
-      protocol: layer2
-      addresses:
-      - 192.168.164.10-192.168.164.19
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,12 +23,11 @@ spec:
           image: metallb/controller:v0.13.13
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   name: metallb-speaker
   namespace: metallb-system
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: metallb-speaker
@@ -54,3 +40,21 @@ spec:
       containers:
         - name: speaker
           image: metallb/speaker:v0.13.13
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: harbour-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.164.10-192.168.164.19
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: harbour-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - harbour-pool

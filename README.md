@@ -33,6 +33,8 @@ Worker-noderne håndterer workloads og kritiske services med HA.
 
 ```text
 theHarbour_ansible/
+├─ collections/
+   └─ requirements.yml
 ├─ Inventory/
 │  ├─ group_vars/
 │  │  └─ all.yml
@@ -48,6 +50,9 @@ theHarbour_ansible/
    │  ├─ defaults/main.yml
    │  └─ tasks/main.yml
    └─ metallb/
+      ├─ files/
+      │  ├─ ipaddresspool.yml
+      │  └─ l2advertisement.yml
       └─ tasks/main.yml
 ```
 
@@ -207,11 +212,24 @@ MetalLB vil allokere **ClusterIP / LoadBalancer IPs** fra range defineret i `man
 * Pi-hole administreres via `WEBPASSWORD` og `ADMINACCOUNT` (fra Kubernetes Secret)
 * HA sikres via 2 replicas og worker-affinity
 
+Se detaljeret dokumentation i [theHarbour Network repository](https://github.com/PeterBech/theHarbour_network)
+
+### NFS Server (Persistent Storage)
+* Kører på master (harbour-lighthouse) som **NFS-Server.**
+* Eksporterer `/srv/k8s-storage` til LAN / k3s cluster (`192.168.164.0/24`).
+* Worker-noder monterer NFS som **PersistentVolume** til workloads.
+* Nem integration med StatefulSets og andre applikationer, der kræver delte volumener.
+* Opsætning håndteres via Ansible-role ``nfs-server``.
+
+Se detaljeret dokumentation i [NFS Server dokumentationen](Documents/NFS-Server.md)
+
 ### MetalLB
 
 * Konfigurerer floating IP range på tværs af workers
 * Kan eksponere LoadBalancer services til LAN/WAN
 * Floating IP rutes til node med “mest overskud”
+
+Læs mere om opsætning og detaljer i [MetalLB-dokumentationen](Documents/Metallb.md)
 
 ---
 

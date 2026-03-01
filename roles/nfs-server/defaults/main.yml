@@ -1,0 +1,7 @@
+nfs_exports:
+  - path: /srv/k8s-storage
+    network: 192.168.164.0/24
+    options: rw,sync,no_subtree_check, no_root_squash
+
+nfs_packages:
+  - nfs-kernel-server

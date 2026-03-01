@@ -71,6 +71,14 @@
         src: "{{ playbook_dir }}/fetched/harbour-lighthouse/k3s.yaml"
         dest: "{{ playbook_dir }}/kubeconfigs/harbour-lighthouse-kubeconfig"
 
+# -----------------------
+# Setup NFS on master
+# -----------------------
+- name: Setup NFS server on master
+  hosts: k3s_master
+  become: true
+  roles:
+    - nfs-server
 
 
 # -----------------------
@@ -88,6 +96,13 @@
         curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_URL=https://{{ master_ip }}:6443 K3S_TOKEN={{ token }} sh -s - agent {{ k3s_install_flags_agent }}
       args:
         creates: /usr/local/bin/k3s
+
+    - name: Install NFS client utilities
+      apt:
+        name: nfs-common
+        state: present
+        update_cache: true
+
 
 # -----------------------
 # Install Helm on all nodes

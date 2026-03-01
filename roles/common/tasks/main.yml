@@ -59,6 +59,22 @@
     msg: "UFW enabled: {{ ufw_enabled_result.changed }}"
 
 # -------------------
+# Allow NFS ports from local network
+# -------------------
+- name: Allow NFS ports through UFW
+  ufw:
+    rule: allow
+    from_ip: "{{ local_net_cidr }}"
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  loop: "{{ nfs_ports }}"
+  when: ufw_enabled
+  register: ufw_nfs_result
+- debug:
+    msg: "NFS port {{ item.port }}/{{ item.proto }} allowed: {{ ufw_nfs_result.changed }}"
+
+
+# -------------------
 # Optional: prepare for k3s
 # -------------------
 - name: Ensure swap is off (required for k3s)
